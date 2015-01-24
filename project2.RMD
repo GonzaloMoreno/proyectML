@@ -1,0 +1,140 @@
+---
+title: "projectML"
+author: "Gonzalo Moreno"
+date: "Saturday, January 24, 2015"
+output: html_document
+---
+
+
+Background
+
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)
+
+1) Preparation of directory and library
+
+```{r, echo=TRUE}
+setwd("D:/Gonzalo Moreno/personal/data science/machine Learning JH/project/project-machine-learning-RMD")
+library(caret)
+library(randomForest)
+library(RCurl)
+
+```
+
+2) Downloading Data
+
+
+```{r,echo=TRUE,cache=TRUE}
+
+training<-read.csv("pml-training.csv", header=TRUE, sep=",", dec=".")
+dim(training)
+testing<-read.csv("pml-testing.csv", header=TRUE, sep=",", dec=".")
+dim(testing)
+
+```
+
+training2 has 160 variables.
+
+3) Cleaning and Filtering of Data
+
+
+The purpose is discarding of irrelevant, NA´s or with NULL variance variables. First we join training and testing to do the same cleaning of data. When cleaning is finished, training and testing are separated again
+
+
+```{r, echo=TRUE}
+
+## Training Data
+
+
+training2<-subset(training,select=-c(classe))
+num.row<-nrow(training2)
+testing2<-subset(testing,select=-c(problem_id))
+data.join<-rbind(training2,testing2)
+
+data.join <- data.join[ , colSums(is.na(data.join)) == 0]
+nonzeroVar= nearZeroVar(data.join[sapply(data.join, is.numeric)], saveMetrics = TRUE)
+data.join= data.join[,nonzeroVar[, 'nzv']==0]
+remove = c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window', 'num_window')
+data.join <- data.join[, -which(names(data.join) %in% remove)]
+
+dim(data.join)
+
+
+
+```
+
+data.join has 52 variables. PCA analysis is executed an Variables correlated are reemplaced by PCA variables. 
+This is done for training and testing data
+
+```{r,echo=TRUE, cache=TRUE}
+## Training Data
+corrMatrix <- abs(cor(na.omit(data.join[sapply(data.join, is.numeric)]))) ## Correlation matrix
+correlated<-which(corrMatrix>0.9, arr.ind=TRUE)  ## data correlated is chosen
+
+## PCA variables is generated
+correlated.var<-data.join[, c(correlated)]
+correlated.var<-correlated.var[sapply(correlated.var, is.numeric)]
+preproc <- preProcess(correlated.var, method="pca")
+train.pca<-predict(preproc, correlated.var) ## PCA variables are created
+
+## correlated variables is deleted because they aren´t needed anymore. Instead of them, PCA variables will be used
+data.join2<-data.join[,-c(correlated)] ##variables correlated are deleted
+data.join2<-cbind(data.join2,train.pca) ## PCA variables are used instead of correlated one´s
+dim(data.join2)
+
+
+```
+
+the amount of variables of training2 and testing was reduced since 160 to 23. 23 of them are PCA variables. Training and testing data was joined to create data.join2. Now that all the cleaning is done we must recuperate
+the training and testing data
+
+```{r, echo=TRUE}
+training2<-data.join2[1:num.row,]
+testing<- data.join2[(num.row+1):nrow(data.join2),]
+classe<-training$classe
+training2<-cbind(training2,classe)
+dim(training2)
+
+```
+
+
+
+4) Splitting data
+
+```{r, echo=TRUE}
+inTrain <- createDataPartition(y=training2$classe, p=0.6, list=FALSE)
+training3 <- training2[inTrain,]
+testing2 <- training2[-inTrain,]## it is used for in sample accuracy and prediction
+
+```
+5)Analysing Data using Random Forest
+I use Random Forest because it has the cross validation incorporated in its function
+
+```{r,echo=TRUE, cache=TRUE}
+library(randomForest)
+training3 <- training3[ , sapply(training2, nlevels) <=53]
+modfit<-randomForest(classe ~., data=training3)
+modfit
+
+```
+
+The accuracy is of 98.64% and the error rate is of 1.36% with training data
+
+
+6) Confusion Matrix and accuracy
+
+I use testing2 to predict and check performance of accuracy
+  
+```{r, echo=TRUE}
+set.seed(12345)
+rf.pred=predict(modfit,testing2,type="class")
+predMatrix = with(testing2,table(rf.pred,classe))
+confusionMatrix(rf.pred, testing2$classe)
+
+```
+The accuracy is of 97,16% with testing data.
+ `
+ 
+
+
+  
